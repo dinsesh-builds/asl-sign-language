@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASL Live — Real-Time Sign Language Recognition</title>
+
+<!-- MediaPipe Hands -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<!-- ONNX Runtime Web -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ── Reset & Variables ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #080810;
+  --surface:  #0f0f1a;
+  --card:     #141420;
+  --border:   #1e1e30;
+  --accent:   #00e5ff;
+  --purple:   #7c3aed;
+  --green:    #00ff88;
+  --orange:   #ff6b35;
+  --red:      #ff3366;
+  --text:     #e8e8f4;
+  --muted:    #4a4a6a;
+  --mono:     'Space Mono', monospace;
+  --display:  'Syne', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--display);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* grain */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 999;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 32px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(8,8,16,.95);
+  backdrop-filter: blur(16px);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.brand h1 { font-size: 1rem; font-weight: 800; letter-spacing: -.02em; }
+.brand h1 em { font-style: normal; color: var(--accent); }
+
+.pills { display: flex; gap: 8px; }
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 100px;
+  font-family: var(--mono); font-size: .65rem;
+  border: 1px solid var(--border); background: var(--card);
+  transition: all .3s;
+}
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted); transition: all .3s;
+}
+.pill.on .dot  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.pill.warn .dot{ background: var(--orange); }
+.pill.off .dot { background: var(--red); }
+
+/* ── Main layout ─────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Camera area ─────────────────────────────────────────────── */
+.cam-wrap {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+#inputVideo  { display: none; }
+#outputCanvas {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1); /* mirror */
+}
+
+/* scanline effect */
+.cam-wrap::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,.012) 2px, rgba(0,229,255,.012) 4px);
+  pointer-events: none; z-index: 2;
+}
+
+/* corner brackets */
+.cam-wrap .bracket {
+  position: absolute; width: 28px; height: 28px;
+  border-color: var(--accent); border-style: solid; opacity: .6; z-index: 3;
+}
+.bracket.tl { top:16px; left:16px;  border-width:2px 0 0 2px; }
+.bracket.tr { top:16px; right:16px; border-width:2px 2px 0 0; }
+.bracket.bl { bottom:16px; left:16px;  border-width:0 0 2px 2px; }
+.bracket.br { bottom:16px; right:16px; border-width:0 2px 2px 0; }
+
+/* scanning line */
+.scan-line {
+  position: absolute; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0; z-index: 3;
+  animation: scan 3s linear infinite;
+}
+@keyframes scan {
+  0%   { top: 0%;   opacity: 0; }
+  5%   { opacity: .4; }
+  95%  { opacity: .4; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* no-hand overlay */
+.no-hand-msg {
+  position: absolute; inset: 0; z-index: 4;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  background: rgba(8,8,16,.7); backdrop-filter: blur(4px);
+  transition: opacity .4s;
+}
+.no-hand-msg.hidden { opacity: 0; pointer-events: none; }
+.no-hand-msg .emoji { font-size: 3.5rem; animation: float 2.2s ease-in-out infinite; }
+.no-hand-msg p { font-family: var(--mono); font-size: .8rem; color: var(--muted); }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+
+/* loading overlay */
+.loading-overlay {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px;
+  background: var(--bg);
+  transition: opacity .6s;
+}
+.loading-overlay.hidden { opacity: 0; pointer-events: none; }
+.loading-overlay h2 { font-size: 1.4rem; font-weight: 800; }
+.loading-overlay h2 em { font-style: normal; color: var(--accent); }
+.load-steps { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.load-steps li {
+  font-family: var(--mono); font-size: .75rem; color: var(--muted);
+  display: flex; align-items: center; gap: 10px;
+  transition: color .3s;
+}
+.load-steps li.done  { color: var(--green); }
+.load-steps li.error { color: var(--red); }
+.load-steps li .s-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--muted);
+  flex-shrink: 0; transition: all .3s;
+}
+.load-steps li.done  .s-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.load-steps li.active .s-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse .8s ease-in-out infinite; }
+.load-steps li.error .s-dot  { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.file-pick-area {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 8px;
+}
+.file-pick-area p { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+.file-btn {
+  padding: 10px 28px;
+  background: linear-gradient(135deg, var(--purple), var(--accent));
+  border: none; border-radius: 100px;
+  color: #fff; font-family: var(--mono); font-size: .8rem;
+  cursor: pointer; transition: opacity .2s, transform .2s;
+}
+.file-btn:hover { opacity: .85; transform: translateY(-2px); }
+
+/* ── Side panel ──────────────────────────────────────────────── */
+.side {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.side::-webkit-scrollbar { width: 4px; }
+.side::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Letter display ──────────────────────────────────────────── */
+.letter-sec {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+.sec-label {
+  font-family: var(--mono); font-size: .6rem;
+  color: var(--muted); letter-spacing: .12em;
+  text-transform: uppercase; margin-bottom: 12px;
+}
+.letter-ring {
+  width: 110px; height: 110px; margin: 0 auto;
+  border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; background: var(--card);
+  transition: border-color .25s, box-shadow .25s;
+}
+.letter-ring.lit {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0,229,255,.1), 0 0 40px rgba(0,229,255,.2);
+}
+.letter-ring::before {
+  content: '';
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 1px dashed rgba(0,229,255,.2);
+  animation: spin 12s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.big-letter {
+  font-family: var(--mono); font-size: 3.8rem; font-weight: 700;
+  color: var(--accent); line-height: 1;
+  transition: all .15s;
+}
+.big-letter.empty { color: var(--muted); font-size: 1.2rem; }
+
+.conf-strip {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; margin-top: 12px;
+}
+.conf-strip span { font-family: var(--mono); font-size: .65rem; color: var(--muted); }
+.conf-bar-wrap {
+  flex: 1; max-width: 120px; height: 4px;
+  background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.conf-bar {
+  height: 100%; border-radius: 2px;
+  background: var(--green); transition: width .2s, background .3s;
+}
+.conf-num {
+  font-family: var(--mono); font-size: .72rem; font-weight: 700;
+  color: var(--green); min-width: 36px; transition: color .3s;
+}
+
+/* ── Hold bar ────────────────────────────────────────────────── */
+.hold-sec {
+  padding: 12px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.hold-header {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: .6rem; color: var(--muted);
+  margin-bottom: 8px; text-transform: uppercase; letter-spacing: .1em;
+}
+.hold-track {
+  height: 8px; background: var(--card); border-radius: 4px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.hold-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--purple), var(--accent));
+  box-shadow: 0 0 10px rgba(0,229,255,.3);
+  transition: width .08s linear;
+  width: 0%;
+}
+
+/* ── Sentence ────────────────────────────────────────────────── */
+.sentence-sec {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.sentence-box {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; min-height: 72px;
+  padding: 12px 16px;
+  font-family: var(--mono); font-size: 1.3rem;
+  color: var(--text); line-height: 1.5; word-break: break-all;
+  transition: border-color .2s;
+}
+.sentence-box:focus-within { border-color: var(--accent); }
+.cursor {
+  display: inline-block; width: 2px; height: 1.1em;
+  background: var(--accent); margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── Controls ────────────────────────────────────────────────── */
+.controls-sec { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.btn {
+  padding: 10px 6px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--mono); font-size: .68rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  gap: 6px; transition: all .18s; user-select: none;
+}
+.btn:hover  { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,.05); }
+.btn:active { transform: scale(.96); }
+.btn.on     { background: rgba(0,229,255,.1); border-color: var(--accent); color: var(--accent); }
+.btn.speak  {
+  grid-column: 1/-1; padding: 12px;
+  background: linear-gradient(135deg, var(--purple), #4338ca);
+  border: none; color: #fff; font-size: .78rem; border-radius: 12px;
+}
+.btn.speak:hover { opacity: .88; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,58,237,.35); }
+.kbd-row {
+  font-family: var(--mono); font-size: .58rem; color: var(--muted);
+  text-align: center; line-height: 2;
+}
+kbd {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px;
+  font-family: var(--mono); font-size: .58rem;
+}
+
+/* ── ASL grid ────────────────────────────────────────────────── */
+.asl-sec { padding: 16px 24px 20px; }
+.asl-grid { display: grid; grid-template-columns: repeat(9,1fr); gap: 4px; margin-top: 8px; }
+.asl-key {
+  aspect-ratio: 1; border-radius: 6px;
+  background: var(--card); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: .6rem; color: var(--muted);
+  transition: all .2s;
+}
+.asl-key.active {
+  background: rgba(0,229,255,.15); border-color: var(--accent);
+  color: var(--accent); transform: scale(1.08);
+}
+
+/* ── Toast ───────────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(50px);
+  background: var(--card); border: 1px solid var(--accent);
+  color: var(--accent); font-family: var(--mono); font-size: .72rem;
+  padding: 8px 22px; border-radius: 100px; z-index: 200;
+  opacity: 0; transition: all .3s;
+}
+#toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">🤟</div>
+    <h1>ASL<em>Live</em></h1>
+  </div>
+  <div class="pills">
+    <div class="pill" id="modelPill"><span class="dot"></span><span>Loading…</span></div>
+    <div class="pill" id="handPill"><span class="dot"></span><span>No Hand</span></div>
+    <div class="pill on"  id="ttsPill"><span class="dot"></span><span>TTS ON</span></div>
+  </div>
+</header>
+
+<!-- APP -->
+<div class="app">
+
+  <!-- Camera -->
+  <div class="cam-wrap">
+    <video id="inputVideo" autoplay playsinline></video>
+    <canvas id="outputCanvas"></canvas>
+    <div class="scan-line"></div>
+    <div class="bracket tl"></div>
+    <div class="bracket tr"></div>
+    <div class="bracket bl"></div>
+    <div class="bracket br"></div>
+
+    <div class="no-hand-msg hidden" id="noHandMsg">
+      <div class="emoji">🤚</div>
+      <p>Show your hand to the camera</p>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadOverlay">
+      <div class="brand" style="margin-bottom:8px">
+        <div class="brand-icon" style="width:48px;height:48px;font-size:24px">🤟</div>
+        <h2 style="font-size:1.5rem">ASL<em>Live</em></h2>
+      </div>
+      <ul class="load-steps">
+        <li id="ls-model"  class="active"><span class="s-dot"></span>Loading ONNX model…</li>
+        <li id="ls-mp"    ><span class="s-dot"></span>Initializing MediaPipe Hands…</li>
+        <li id="ls-cam"   ><span class="s-dot"></span>Starting camera…</li>
+      </ul>
+      <div class="file-pick-area" id="filePick" style="display:none">
+        <p style="font-family:var(--mono);font-size:.75rem;color:var(--text)">Step 1: Run <code style="color:var(--orange)">python export_model.py</code> in your terminal</p>
+        <p style="font-family:var(--mono);font-size:.75rem;color:var(--text)">Step 2: Click below and select <code style="color:var(--accent)">model.onnx</code></p>
+        <button class="file-btn" onclick="document.getElementById('onnxFile').click()">📂 Choose model.onnx</button>
+        <input type="file" id="onnxFile" accept=".onnx" style="display:none" onchange="loadOnnxFile(this)">
+        <p style="font-size:.6rem;color:var(--muted);margin-top:4px">Works in Microsoft Edge ✓ and Google Chrome ✓</p>
+        <p style="font-size:.6rem;color:var(--orange);margin-top:2px">⚠ Make sure labels.json is in the same folder — it fixes sign accuracy</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side">
+
+    <!-- Letter -->
+    <div class="letter-sec">
+      <div class="sec-label">Detected Sign</div>
+      <div class="letter-ring" id="letterRing">
+        <div class="big-letter empty" id="bigLetter">—</div>
+      </div>
+      <div class="conf-strip">
+        <span>Confidence</span>
+        <div class="conf-bar-wrap"><div class="conf-bar" id="confBar" style="width:0%"></div></div>
+        <span class="conf-num" id="confNum">—</span>
+      </div>
+    </div>
+
+    <!-- Hold bar -->
+    <div class="hold-sec">
+      <div class="hold-header">
+        <span>Hold Progress</span>
+        <span id="holdPct">0%</span>
+      </div>
+      <div class="hold-track">
+        <div class="hold-fill" id="holdFill"></div>
+      </div>
+    </div>
+
+    <!-- Sentence -->
+    <div class="sentence-sec">
+      <div class="sec-label">Sentence Builder</div>
+      <div class="sentence-box">
+        <span id="sentText"></span><span class="cursor"></span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-sec">
+      <div class="btn-grid">
+        <button class="btn" onclick="doAction('backspace')">⌫ Backspace</button>
+        <button class="btn" onclick="doAction('clear')">✕ Clear</button>
+        <button class="btn" onclick="doAction('space')">␣ End Word</button>
+        <button class="btn" id="muteBtn" onclick="doAction('mute')">🔊 Mute TTS</button>
+        <button class="btn" id="fbBtn"   onclick="doAction('letterFb')">🔤 Letter Sound</button>
+        <button class="btn speak" onclick="doAction('speak')">▶ Speak Sentence</button>
+      </div>
+      <div class="kbd-row">
+        <kbd>Space</kbd> end word &nbsp;·&nbsp;
+        <kbd>S</kbd> speak &nbsp;·&nbsp;
+        <kbd>T</kbd> mute &nbsp;·&nbsp;
+        <kbd>F</kbd> letter sound &nbsp;·&nbsp;
+        <kbd>⌫</kbd> delete &nbsp;·&nbsp;
+        <kbd>C</kbd> clear
+      </div>
+    </div>
+
+    <!-- ASL grid -->
+    <div class="asl-sec">
+      <div class="sec-label">Sign Reference</div>
+      <div class="asl-grid" id="aslGrid"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Label map — loaded from labels.json (correct ONNX order) ────────────────
+let LABELS = [];
+const FALLBACK_SIGNS = {};
+for (let i=0;i<26;i++) FALLBACK_SIGNS[i] = String.fromCharCode(65+i);
+for (let i=0;i<10;i++) FALLBACK_SIGNS[26+i] = String(i);
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ortSession   = null;
+let nFeatures    = 63;
+let sentence     = [];
+let predBuffer   = [];
+let predCount    = 0;
+let lastAppended = '';
+let lastHandTime = Date.now();
+let handVisible  = false;
+let ttsOn        = true;
+let letterFb     = false;
+let prevChar     = '';
+
+const BUFFER_SIZE     = 7;
+const MIN_COUNT       = 4;
+const REQUIRED_FRAMES = 30;
+const PAUSE_MS        = 1200;
+
+// ── Build ASL grid ────────────────────────────────────────────────────────────
+const grid = document.getElementById('aslGrid');
+'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').forEach(ch => {
+  const d = document.createElement('div');
+  d.className = 'asl-key';
+  d.id = 'k-' + ch;
+  d.textContent = ch;
+  grid.appendChild(d);
+});
+
+// ── Step tracker ─────────────────────────────────────────────────────────────
+function stepDone(id)  { const e=document.getElementById(id); e.className='done';  e.querySelector('.s-dot').style.background=''; }
+function stepActive(id){ const e=document.getElementById(id); e.className='active'; }
+function stepError(id,msg){ const e=document.getElementById(id); e.className='error'; e.childNodes[1].textContent=' '+msg; }
+
+// ── ONNX Model Loading ────────────────────────────────────────────────────────
+async function tryAutoLoad() {
+  try {
+    const r = await fetch('labels.json');
+    if (r.ok) { LABELS = await r.json(); console.log('labels.json loaded:', LABELS); }
+  } catch(e) {}
+  document.getElementById('ls-model').className = '';
+  document.getElementById('ls-model').childNodes[1].textContent = ' Select your model.onnx file below';
+  document.getElementById('filePick').style.display = 'flex';
+}
+
+async function loadOnnxFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('filePick').style.display = 'none';
+  document.getElementById('ls-model').className = 'active';
+  document.getElementById('ls-model').childNodes[1].textContent = ' Loading ' + file.name + '…';
+  const buf = await file.arrayBuffer();
+  await initOnnx(buf);
+}
+
+async function initOnnx(buf) {
+  try {
+    ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+    ortSession = await ort.InferenceSession.create(buf);
+    nFeatures = 63;
+    stepDone('ls-model');
+    setPill('modelPill','on','Model Ready');
+    toast('✓ Model loaded');
+    initMediaPipe();
+  } catch(e) {
+    stepError('ls-model', 'Failed: ' + e.message);
+    setPill('modelPill','off','Model Error');
+    document.getElementById('filePick').style.display = 'flex';
+  }
+}
+
+// ── MediaPipe ─────────────────────────────────────────────────────────────────
+function initMediaPipe() {
+  stepActive('ls-mp');
+  const video  = document.getElementById('inputVideo');
+  const canvas = document.getElementById('outputCanvas');
+  const ctx    = canvas.getContext('2d');
+
+  const handsModel = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${f}`
+  });
+  handsModel.setOptions({
+    maxNumHands:           1,
+    modelComplexity:       1,
+    minDetectionConfidence:0.75,
+    minTrackingConfidence: 0.65
+  });
+
+  handsModel.onResults(results => onResults(results, canvas, ctx));
+  stepDone('ls-mp');
+  stepActive('ls-cam');
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      canvas.width  = video.videoWidth  || 1280;
+      canvas.height = video.videoHeight || 720;
+      await handsModel.send({ image: video });
+    },
+    width: 1280, height: 720
+  });
+  camera.start().then(()=>{
+    stepDone('ls-cam');
+    setTimeout(()=>{ document.getElementById('loadOverlay').classList.add('hidden'); }, 600);
+  }).catch(e => stepError('ls-cam', e.message));
+}
+
+// ── Feature extraction — mirrors X to match Python cv2.flip(frame,1) training ─
+function extractFeatures(landmarks) {
+  // Mirror x coordinates to match how training data was collected
+  // Python uses cv2.flip which mirrors the frame before passing to MediaPipe
+  const xs = landmarks.map(l => 1 - l.x);
+  const ys = landmarks.map(l => l.y);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xSpan = (xMax - xMin) || 1e-6;
+  const ySpan = (yMax - yMin) || 1e-6;
+
+  const f = [];
+  // 42 normalized positions (mirrored x)
+  for (const l of landmarks) {
+    f.push(((1 - l.x) - xMin) / xSpan);
+    f.push((l.y - yMin) / ySpan);
+  }
+  // 21 wrist distances (mirrored x)
+  const wx = 1 - landmarks[0].x;
+  const wy = landmarks[0].y;
+  for (const l of landmarks) {
+    const dx = ((1 - l.x) - wx) / xSpan;
+    const dy = (l.y - wy) / ySpan;
+    f.push(Math.sqrt(dx*dx + dy*dy));
+  }
+  return f; // 63 values
+}
+
+// ── SVM predict via ONNX ──────────────────────────────────────────────────────
+async function predict(features) {
+  if (!ortSession) return null;
+  try {
+    const inputName = ortSession.inputNames[0];
+    const tensor = new ort.Tensor('float32', new Float32Array(features), [1, features.length]);
+    const results = await ortSession.run({ [inputName]: tensor });
+
+    const probName = ortSession.outputNames.find(n =>
+      n.toLowerCase().includes('prob') || n.toLowerCase().includes('probability'));
+
+    let predIdx = 0;
+    let conf    = 0;
+
+    if (probName) {
+      const probs  = Array.from(results[probName].data);
+      conf         = Math.round(Math.max(...probs) * 100);
+      predIdx      = probs.indexOf(Math.max(...probs));
+    } else {
+      const labelOut  = results[ortSession.outputNames[0]];
+      const predLabel = labelOut.data[0];
+      predIdx         = typeof predLabel === 'string' ? parseInt(predLabel) : Number(predLabel);
+    }
+
+    let char = '';
+    if (LABELS.length > 0) {
+      char = LABELS[predIdx] || '';
+    } else {
+      const labelOut  = results[ortSession.outputNames[0]];
+      const predLabel = labelOut.data[0];
+      const raw       = typeof predLabel === 'string' ? parseInt(predLabel) : Number(predLabel);
+      char = FALLBACK_SIGNS[raw] || '';
+    }
+
+    return { char, conf };
+  } catch(e) {
+    console.warn('Predict error:', e);
+    return null;
+  }
+}
+
+// ── Main results handler ──────────────────────────────────────────────────────
+async function onResults(results, canvas, ctx) {
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lms = results.multiHandLandmarks[0];
+    handVisible  = true;
+    lastHandTime = Date.now();
+
+    // Draw skeleton (mirror-adjusted for display)
+    const mirroredLms = lms.map(l => ({ x: 1-l.x, y: l.y, z: l.z }));
+    drawConnectors(ctx, mirroredLms, HAND_CONNECTIONS,
+      { color: 'rgba(0,229,255,0.7)', lineWidth: 2 });
+    drawLandmarks(ctx, mirroredLms,
+      { color: '#ffffff', lineWidth: 1, radius: 3 });
+
+    // Predict using mirrored features
+    const feats = extractFeatures(lms);
+    if (feats.length === nFeatures) {
+      const result = await predict(feats);
+      if (result && result.char) {
+        predBuffer.push(result.char);
+        if (predBuffer.length > BUFFER_SIZE) predBuffer.shift();
+
+        const mc   = mode(predBuffer);
+        const mcnt = predBuffer.filter(x=>x===mc).length;
+
+        if (mcnt >= MIN_COUNT) {
+          updateUI(mc, result.conf || mcnt * 14);
+          if (mc === lastAppended) {
+            predCount = Math.min(predCount+1, REQUIRED_FRAMES);
+          } else {
+            predCount    = 1;
+            lastAppended = mc;
+          }
+          if (predCount >= REQUIRED_FRAMES) {
+            appendChar(mc);
+            predCount    = 0;
+            lastAppended = '';
+          }
+        } else {
+          predCount = Math.max(0, predCount-1);
+          updateUI('', 0);
+        }
+      }
+    }
+
+    document.getElementById('noHandMsg').classList.add('hidden');
+    setPill('handPill','on','Hand Detected');
+
+  } else {
+    handVisible  = false;
+    predBuffer   = [];
+    predCount    = Math.max(0, predCount-2);
+    updateUI('', 0);
+    document.getElementById('noHandMsg').classList.remove('hidden');
+    setPill('handPill','off','No Hand');
+
+    if (Date.now() - lastHandTime > PAUSE_MS) {
+      endWord();
+      lastHandTime = Date.now();
+    }
+  }
+
+  const pct = Math.round(predCount / REQUIRED_FRAMES * 100);
+  document.getElementById('holdFill').style.width = pct + '%';
+  document.getElementById('holdPct').textContent  = pct + '%';
+}
+
+function mode(arr) {
+  const cnt = {};
+  arr.forEach(x => cnt[x] = (cnt[x]||0)+1);
+  return Object.keys(cnt).reduce((a,b) => cnt[a]>cnt[b]?a:b);
+}
+
+// ── UI Updates ────────────────────────────────────────────────────────────────
+function updateUI(ch, conf) {
+  const ring   = document.getElementById('letterRing');
+  const letter = document.getElementById('bigLetter');
+  const bar    = document.getElementById('confBar');
+  const num    = document.getElementById('confNum');
+
+  if (ch !== prevChar) {
+    if (prevChar) { const el=document.getElementById('k-'+prevChar); if(el) el.classList.remove('active'); }
+    if (ch)       { const el=document.getElementById('k-'+ch);       if(el) el.classList.add('active'); }
+    prevChar = ch;
+  }
+
+  if (ch) {
+    ring.classList.add('lit');
+    letter.className = 'big-letter';
+    letter.textContent = ch;
+    const c = conf < 50 ? '#ff6b35' : conf < 75 ? '#f0c040' : '#00ff88';
+    bar.style.width      = conf + '%';
+    bar.style.background = c;
+    num.style.color      = c;
+    num.textContent      = conf + '%';
+  } else {
+    ring.classList.remove('lit');
+    letter.className  = 'big-letter empty';
+    letter.textContent= '—';
+    bar.style.width   = '0%';
+    num.textContent   = '—';
+  }
+
+  document.getElementById('sentText').textContent = sentence.join('');
+}
+
+// ── Sentence logic ────────────────────────────────────────────────────────────
+function appendChar(ch) {
+  sentence.push(ch);
+  document.getElementById('sentText').textContent = sentence.join('');
+  if (letterFb) speakText(ch);
+}
+
+function endWord() {
+  if (!sentence.length || sentence[sentence.length-1]===' ') return;
+  const full  = sentence.join('').trimEnd();
+  const words = full.split(' ');
+  const last  = words[words.length-1];
+  if (ttsOn && last) speakText(last);
+  sentence.push(' ');
+  document.getElementById('sentText').textContent = sentence.join('');
+  lastAppended = ' ';
+}
+
+// ── TTS ───────────────────────────────────────────────────────────────────────
+function speakText(text) {
+  if (!ttsOn || !text.trim()) return;
+  if (!('speechSynthesis' in window)) return;
+  const utt = new SpeechSynthesisUtterance(text.trim());
+  utt.rate   = 0.95;
+  utt.volume = 1;
+  const voices = window.speechSynthesis.getVoices();
+  const eng    = voices.find(v => /en.US/i.test(v.lang) && !v.localService) ||
+                 voices.find(v => /en/i.test(v.lang));
+  if (eng) utt.voice = eng;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utt);
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function doAction(action) {
+  if (action === 'backspace') {
+    if (sentence.length) sentence.pop();
+    document.getElementById('sentText').textContent = sentence.join('');
+    toast('Deleted');
+  } else if (action === 'clear') {
+    sentence = []; predBuffer = []; predCount = 0; lastAppended = '';
+    document.getElementById('sentText').textContent = '';
+    toast('Cleared');
+  } else if (action === 'space') {
+    endWord();
+    toast('Word ended');
+  } else if (action === 'speak') {
+    const txt = sentence.join('').trim();
+    if (txt) { speakText(txt); toast('Speaking…'); }
+  } else if (action === 'mute') {
+    ttsOn = !ttsOn;
+    window.speechSynthesis.cancel();
+    const btn = document.getElementById('muteBtn');
+    btn.className = 'btn' + (ttsOn ? '' : ' on');
+    btn.textContent = ttsOn ? '🔊 Mute TTS' : '🔇 TTS Off';
+    setPill('ttsPill', ttsOn ? 'on' : 'warn', ttsOn ? 'TTS ON' : 'TTS MUTED');
+    toast(ttsOn ? 'TTS On' : 'TTS Muted');
+  } else if (action === 'letterFb') {
+    letterFb = !letterFb;
+    const btn = document.getElementById('fbBtn');
+    btn.className = 'btn' + (letterFb ? ' on' : '');
+    toast('Letter feedback ' + (letterFb ? 'ON' : 'OFF'));
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setPill(id, cls, label) {
+  const el = document.getElementById(id);
+  el.className = 'pill ' + cls;
+  el.querySelector('span:last-child').textContent = label;
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 1700);
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key===' ')              { e.preventDefault(); doAction('space'); }
+  else if (e.key==='s')         doAction('speak');
+  else if (e.key==='t')         doAction('mute');
+  else if (e.key==='f')         doAction('letterFb');
+  else if (e.key==='c')         doAction('clear');
+  else if (e.key==='Backspace') doAction('backspace');
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', () => {});
+  }
+  tryAutoLoad();
+});
+</script>
+</body>
+</html>
