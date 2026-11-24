@@ -9,6 +9,10 @@ Reads 36 American Sign Language signs (A to Z, 0 to 9) from a webcam feed. Two w
 
 https://dinsesh-builds.github.io/asl-sign-language/
 
+![Browser demo running on GitHub Pages](docs/demo.jpeg)
+
+The camera step needs webcam access in your browser. The model and MediaPipe steps load on their own.
+
 ## Run on desktop
 
 Use Python 3.9 or newer. From the repository root:
