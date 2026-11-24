@@ -67,8 +67,9 @@ The script prints test accuracy and a per class report. The 80/20 split happens 
 
 ## Related work
 
-- [Sign-Language-Translator](https://github.com/dgovor/Sign-Language-Translator), neural sign language to text.
+- [WLASL](https://github.com/dxli94/WLASL), the WACV 2020 word level dataset and method comparison. It covers 2,000 signs from video, so its scores are not comparable to this fingerspelling model, but it is the benchmark to read next.
 - [sign-language-processing](https://github.com/kevinjosethomas/sign-language-processing), ASL fingerspelling with semantic pose retrieval.
+- [SignLanguage](https://github.com/Narottam04/SignLanguage), a platform for learning ASL with videos for over 20,000 phrases.
 - [Mediapipe and CNNs for Real-Time ASL Gesture Recognition](https://arxiv.org/pdf/2305.05296), a comparison of landmark classifiers.
 
 ## License
