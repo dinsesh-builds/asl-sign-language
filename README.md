@@ -1,5 +1,7 @@
 # ASL sign language recognition
 
+![CI](https://github.com/dinsesh-builds/asl-sign-language/actions/workflows/ci.yml/badge.svg) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Reads 36 American Sign Language signs (A to Z, 0 to 9) from a webcam feed. Two ways to run it:
 
 - `inference_classifier.py` opens a live desktop window and builds a sentence as you sign.

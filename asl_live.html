@@ -312,6 +312,7 @@ let prevChar     = '';
 const BUFFER_SIZE     = 7;
 const MIN_COUNT       = 4;
 const REQUIRED_FRAMES = 30;
+const MIN_CONFIDENCE = 35;
 const PAUSE_MS        = 1200;
 
 // ── Build ASL grid ────────────────────────────────────────────────────────────
@@ -490,7 +491,7 @@ async function onResults(results, canvas, ctx) {
     const feats = extractFeatures(lms);
     if (feats.length === nFeatures) {
       const result = await predict(feats);
-      if (result && result.char) {
+      if (result && result.char && (result.conf === 0 || result.conf >= MIN_CONFIDENCE)) {
         predBuffer.push(result.char);
         if (predBuffer.length > BUFFER_SIZE) predBuffer.shift();
 
@@ -670,7 +671,7 @@ function toast(msg) {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.target.closest('button, input, textarea, select, [contenteditable="true"]')) return;
+  if (e.target instanceof Element && e.target.closest('button, input, textarea, select, [contenteditable="true"]')) return;
   if (e.key===' ')              { e.preventDefault(); doAction('space'); }
   else if (e.key==='s')         doAction('speak');
   else if (e.key==='t')         doAction('mute');
