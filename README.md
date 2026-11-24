@@ -48,10 +48,12 @@ The script prints test accuracy and a per class report. The 80/20 split happens 
 
 ## Limits
 
-- One hand at a time, detection confidence 0.75, tracking confidence 0.65.
-- Trained on a controlled dataset. Lighting, camera angle, and hand size change the result.
+- One hand at a time, detection confidence 0.75, tracking confidence 0.65. Point the palm at the camera against a plain background.
+- Touching fingers and self occlusion confuse landmark tracking, so pointing at one item can be read as another. The preview is mirrored while recognition uses the raw frame, so what you see and what the model reads differ by design.
+- J and Z need motion in real ASL. This model treats them as static poses and will confuse them with similar letters.
+- Trained on a controlled dataset. Lighting, camera angle, and hand size change the result. Median filtering and the hold bar reduce brief misreads but cannot fix bad landmarks.
 - The browser path needs ONNX runtime and MediaPipe scripts from a CDN.
-- This is a learning and prototyping tool, not a production accessibility product.
+- This is a learning and prototyping tool, not a production accessibility product. The page has light and dark themes.
 
 ## Files
 
