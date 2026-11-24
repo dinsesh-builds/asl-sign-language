@@ -7,6 +7,10 @@ Reads 36 American Sign Language signs (A to Z, 0 to 9) from a webcam feed. Two w
 - `inference_classifier.py` opens a live desktop window and builds a sentence as you sign.
 - `asl_live.html` runs the exported model in the browser. The page loads `model.onnx` automatically, with a file picker as fallback.
 
+## Who is this for
+
+Students learning fingerspelling, computer vision developers who want a small MediaPipe and SVM example, and anyone who wants a real time ASL recognition demo that runs in a browser without an install.
+
 ## Live demo
 
 https://dinsesh-builds.github.io/asl-sign-language/
