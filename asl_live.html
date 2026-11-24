@@ -529,6 +529,16 @@ async function tryAutoLoad() {
     const r = await fetch('labels.json');
     if (r.ok) { LABELS = await r.json(); console.log('labels.json loaded:', LABELS); }
   } catch(e) {}
+  try {
+    document.getElementById('ls-model').className = 'active';
+    document.getElementById('ls-model').childNodes[1].textContent = ' Loading model.onnx…';
+    const m = await fetch('model.onnx');
+    if (!m.ok) throw new Error('model.onnx not found');
+    await initOnnx(await m.arrayBuffer());
+    return;
+  } catch(e) {
+    console.warn('Auto model load failed:', e);
+  }
   document.getElementById('ls-model').className = '';
   document.getElementById('ls-model').childNodes[1].textContent = ' Select your model.onnx file below';
   document.getElementById('filePick').style.display = 'flex';
