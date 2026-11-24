@@ -222,7 +222,7 @@ while True:
     if not ret: break
     if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1: break
 
-    frame     = cv2.flip(frame, 1)
+    frame     = frame  # no mirror: training frames from collect_imgs.py are unflipped
     H, W, _   = frame.shape
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results   = hands.process(frame_rgb)
@@ -271,8 +271,6 @@ while True:
                 else:
                     confidence_pct = 0
 
-                # Debug line — uncomment if something seems wrong:
-                # print(f"pred={pred} char={char!r} conf={confidence_pct}%")
 
                 if char:
                     prediction_buffer.append(char)

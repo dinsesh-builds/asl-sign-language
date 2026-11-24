@@ -7,7 +7,7 @@ import cv2
 
 DATA_DIR = './data'
 NUM_CLASSES = 36          # 26 letters + 10 digits
-IMAGES_PER_CLASS = 300   # You can increase to 300 for better accuracy
+IMAGES_PER_CLASS = 300
 
 # Create main data directory
 if not os.path.exists(DATA_DIR):
@@ -64,7 +64,8 @@ for class_id in range(NUM_CLASSES):
         if not ret:
             break
 
-        cv2.putText(frame,
+        display = frame.copy()
+        cv2.putText(display,
                     f"Capturing {class_names[class_id]}: {count}/{IMAGES_PER_CLASS}",
                     (50, 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
@@ -72,9 +73,7 @@ for class_id in range(NUM_CLASSES):
                     (0, 255, 0),
                     2)
 
-        cv2.imshow("Collect Images", frame)
-
-        # Save image
+        cv2.imshow("Collect Images", display)
         cv2.imwrite(
             os.path.join(class_folder, f"{count}.jpg"),
             frame
@@ -91,4 +90,4 @@ for class_id in range(NUM_CLASSES):
 cap.release()
 cv2.destroyAllWindows()
 
-print("\n✅ DATA COLLECTION COMPLETE FOR A-Z AND 0-9")
+print("\n✅ DATA COLLECTION FINISHED")

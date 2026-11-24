@@ -26,27 +26,25 @@ print(f"      Samples   : {len(X_raw)}")
 print(f"      Features  : {n_features}")
 print(f"      Classes   : {len(np.unique(y_raw))}")
 
-# ── Data augmentation ─────────────────────────────────────
-print("\n[2/5] Augmenting data (3x size) ...")
-np.random.seed(42)
-X_aug_list = [X_raw]
-y_aug_list = [y_raw]
-for noise_level in [0.008, 0.015]:
-    noise = np.random.normal(0, noise_level, X_raw.shape)
-    X_aug = np.clip(X_raw + noise, 0, None)
-    X_aug_list.append(X_aug)
-    y_aug_list.append(y_raw)
-
-X_all = np.vstack(X_aug_list)
-y_all = np.concatenate(y_aug_list)
-print(f"      Augmented samples: {len(X_all)}")
-
-# ── Train/test split ──────────────────────────────────────
-print("\n[3/5] Splitting data (80/20) ...")
-X_train, X_test, y_train, y_test = train_test_split(
-    X_all, y_all, test_size=0.2, stratify=y_all, random_state=42
+# Split before augmentation so near-duplicates cannot leak into the test set.
+print("\n[2/5] Splitting data (80/20) ...")
+X_train_raw, X_test, y_train_raw, y_test = train_test_split(
+    X_raw, y_raw, test_size=0.2, stratify=y_raw, random_state=42
 )
-print(f"      Train: {len(X_train)}  |  Test: {len(X_test)}")
+print(f"      Train: {len(X_train_raw)}  |  Test: {len(X_test)}")
+
+print("\n[3/5] Augmenting training data only (3x size) ...")
+np.random.seed(42)
+X_aug_list = [X_train_raw]
+y_aug_list = [y_train_raw]
+for noise_level in [0.008, 0.015]:
+    noise = np.random.normal(0, noise_level, X_train_raw.shape)
+    X_aug_list.append(np.clip(X_train_raw + noise, 0, None))
+    y_aug_list.append(y_train_raw)
+
+X_train = np.vstack(X_aug_list)
+y_train = np.concatenate(y_aug_list)
+print(f"      Augmented training samples: {len(X_train)}")
 
 # ── Hyperparameter search ─────────────────────────────────
 print("\n[4/5] Finding best SVM parameters (2-5 min) ...")

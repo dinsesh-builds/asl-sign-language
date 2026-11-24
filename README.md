@@ -44,7 +44,7 @@ Keys in the live window: `space` ends a word, `s` speaks the sentence, `t` toggl
 python train_classifier.py
 ```
 
-The script prints test accuracy and a per class report. This README does not claim a fixed accuracy number. Run it on your own data to get yours.
+The script prints test accuracy and a per class report. The 80/20 split happens before augmentation, so near duplicates cannot inflate the test score. This README does not claim a fixed accuracy number. Run it on your own data to get yours.
 
 ## Limits
 
@@ -64,6 +64,12 @@ The script prints test accuracy and a per class report. This README does not cla
 | `inference_classifier.py` | Webcam demo with sentence building and speech |
 | `asl_live.html` | Browser demo |
 | `labels.json` | Label map |
+
+## Related work
+
+- [Sign-Language-Translator](https://github.com/dgovor/Sign-Language-Translator), neural sign language to text.
+- [sign-language-processing](https://github.com/kevinjosethomas/sign-language-processing), ASL fingerspelling with semantic pose retrieval.
+- [Mediapipe and CNNs for Real-Time ASL Gesture Recognition](https://arxiv.org/pdf/2305.05296), a comparison of landmark classifiers.
 
 ## License
 

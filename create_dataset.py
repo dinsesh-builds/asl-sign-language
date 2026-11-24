@@ -55,7 +55,7 @@ def extract_features(hand_landmarks):
 
     return features   # length = 63
 
-dir_list = sorted(os.listdir(DATA_DIR), key=lambda d: int(d) if d.isdigit() else d)
+dir_list = sorted(os.listdir(DATA_DIR), key=lambda d: (0, int(d)) if d.isdigit() else (1, d))
 print(f"Found {len(dir_list)} folders: {dir_list}\n")
 
 for dir_ in dir_list:

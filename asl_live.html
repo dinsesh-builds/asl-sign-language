@@ -484,11 +484,8 @@ kbd {
 <script>
 'use strict';
 
-// ── Label map — loaded from labels.json (correct ONNX order) ────────────────
-let LABELS = [];
-const FALLBACK_SIGNS = {};
-for (let i=0;i<26;i++) FALLBACK_SIGNS[i] = String.fromCharCode(65+i);
-for (let i=0;i<10;i++) FALLBACK_SIGNS[26+i] = String(i);
+// ONNX class order from labels.json. labels.json overrides this when present.
+let LABELS = ["A", "B", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "C", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "D", "4", "5", "6", "7", "8", "9", "E", "F", "G", "H", "I", "J"];
 
 // ── State ────────────────────────────────────────────────────────────────────
 let ortSession   = null;
@@ -605,11 +602,9 @@ function initMediaPipe() {
   }).catch(e => stepError('ls-cam', e.message));
 }
 
-// ── Feature extraction — mirrors X to match Python cv2.flip(frame,1) training ─
+// Feature extraction must match create_dataset.py exactly. No mirroring.
 function extractFeatures(landmarks) {
-  // Mirror x coordinates to match how training data was collected
-  // Python uses cv2.flip which mirrors the frame before passing to MediaPipe
-  const xs = landmarks.map(l => 1 - l.x);
+  const xs = landmarks.map(l => l.x);
   const ys = landmarks.map(l => l.y);
   const xMin = Math.min(...xs), xMax = Math.max(...xs);
   const yMin = Math.min(...ys), yMax = Math.max(...ys);
@@ -617,20 +612,18 @@ function extractFeatures(landmarks) {
   const ySpan = (yMax - yMin) || 1e-6;
 
   const f = [];
-  // 42 normalized positions (mirrored x)
   for (const l of landmarks) {
-    f.push(((1 - l.x) - xMin) / xSpan);
+    f.push((l.x - xMin) / xSpan);
     f.push((l.y - yMin) / ySpan);
   }
-  // 21 wrist distances (mirrored x)
-  const wx = 1 - landmarks[0].x;
+  const wx = landmarks[0].x;
   const wy = landmarks[0].y;
   for (const l of landmarks) {
-    const dx = ((1 - l.x) - wx) / xSpan;
+    const dx = (l.x - wx) / xSpan;
     const dy = (l.y - wy) / ySpan;
     f.push(Math.sqrt(dx*dx + dy*dy));
   }
-  return f; // 63 values
+  return f;
 }
 
 // ── SVM predict via ONNX ──────────────────────────────────────────────────────
@@ -657,16 +650,7 @@ async function predict(features) {
       predIdx         = typeof predLabel === 'string' ? parseInt(predLabel) : Number(predLabel);
     }
 
-    let char = '';
-    if (LABELS.length > 0) {
-      char = LABELS[predIdx] || '';
-    } else {
-      const labelOut  = results[ortSession.outputNames[0]];
-      const predLabel = labelOut.data[0];
-      const raw       = typeof predLabel === 'string' ? parseInt(predLabel) : Number(predLabel);
-      char = FALLBACK_SIGNS[raw] || '';
-    }
-
+    const char = LABELS[predIdx] || '';
     return { char, conf };
   } catch(e) {
     console.warn('Predict error:', e);
@@ -878,7 +862,6 @@ document.addEventListener('keydown', e => {
 window.addEventListener('load', () => {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.getVoices();
-    window.speechSynthesis.addEventListener('voiceschanged', () => {});
   }
   tryAutoLoad();
 });
