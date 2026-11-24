@@ -50,8 +50,9 @@ print(f"      Augmented training samples: {len(X_train)}")
 print("\n[4/5] Finding best SVM parameters (2-5 min) ...")
 t0 = time.time()
 param_grid = {
-    'svm__C':     [1, 5, 10, 50, 100],
-    'svm__gamma': ['scale', 'auto'],
+    'svm__C':           [1, 5, 10, 50, 100],
+    'svm__gamma':       ['scale', 'auto'],
+    'svm__class_weight': [None, 'balanced'],
 }
 pipe = Pipeline([
     ('scaler', StandardScaler()),

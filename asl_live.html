@@ -3,17 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASL Live — Real-Time Sign Language Recognition</title>
+<meta name="color-scheme" content="light dark">
+<title>ASL Live, fingerspelling practice</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
 <!-- MediaPipe Hands -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 
 <!-- ONNX Runtime Web -->
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 
 <style>
 :root {
@@ -205,11 +207,11 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4p
     <div class="video-wrap">
       <video id="inputVideo" playsinline muted></video>
       <canvas id="outputCanvas"></canvas>
-      <div class="no-hand-msg hidden" id="noHandMsg"><p>Show your hand to the camera</p></div>
+      <div class="no-hand-msg hidden" id="noHandMsg" aria-live="polite"><p>Show your hand to the camera</p></div>
       <div class="loading-overlay" id="loadOverlay">
         <div class="load-card">
           <h2>Starting the recognizer</h2>
-          <ol class="load-steps">
+          <ol class="load-steps" aria-live="polite">
             <li id="ls-model" class="active"><span class="s-dot"></span>Loading ONNX model</li>
             <li id="ls-mp"><span class="s-dot"></span>Starting hand tracking</li>
             <li id="ls-cam"><span class="s-dot"></span>Starting camera</li>
@@ -224,7 +226,7 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4p
         </div>
       </div>
     </div>
-    <p class="hint">One hand, plain background. Hold a sign until the progress bar fills. The preview is mirrored like a mirror, while recognition uses the raw camera frame.</p>
+    <p class="hint">Fingerspelling practice, not an ASL interpreter. One hand, plain background, even light. Hold a sign until the progress bar fills. Every frame stays on this device and is never uploaded.</p>
   </section>
 
   <aside class="side">
@@ -245,7 +247,7 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4p
     </section>
 
     <section>
-      <div class="sec-label">Sentence</div>
+      <div class="sec-label">Fingerspelled letters</div>
       <div class="sentence-box"><span id="sentText"></span><span class="cursor"></span></div>
     </section>
 
@@ -257,7 +259,8 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4p
         <button class="btn" type="button" onclick="doAction('space')">End word</button>
         <button class="btn" id="muteBtn" type="button" onclick="doAction('mute')">Mute speech</button>
         <button class="btn" id="fbBtn" type="button" onclick="doAction('letterFb')">Letter sound</button>
-        <button class="btn speak" type="button" onclick="doAction('speak')">Speak sentence</button>
+        <button class="btn speak" type="button" onclick="doAction('speak')">Speak letters</button>
+        <button class="btn" id="stopBtn" type="button" onclick="stopCamera()">Stop camera</button>
       </div>
       <p class="kbd-row"><kbd>Space</kbd> end word · <kbd>S</kbd> speak · <kbd>T</kbd> mute · <kbd>F</kbd> letter sound · <kbd>C</kbd> clear</p>
     </section>
@@ -269,25 +272,9 @@ kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4p
   </aside>
 </main>
 
-<div id="toast" role="status"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
-(function () {
-  var root = document.documentElement;
-  var btn = document.getElementById('themeBtn');
-  if (localStorage.getItem('aslTheme') === 'dark') root.setAttribute('data-theme', 'dark');
-  function sync() { btn.textContent = root.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark'; }
-  btn.addEventListener('click', function () {
-    var dark = root.getAttribute('data-theme') === 'dark';
-    if (dark) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'dark');
-    localStorage.setItem('aslTheme', dark ? 'light' : 'dark');
-    sync();
-  });
-  sync();
-})();
-</script>
-
-    <script>
 (function () {
   var root = document.documentElement;
   var btn = document.getElementById('themeBtn');
@@ -656,6 +643,17 @@ function doAction(action) {
   }
 }
 
+function stopCamera() {
+  const video = document.getElementById('inputVideo');
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+  }
+  document.querySelector('#noHandMsg p').textContent = 'Camera stopped. Reload to start again.';
+  document.getElementById('noHandMsg').classList.remove('hidden');
+  setPill('handPill', 'off', 'Camera stopped');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function setPill(id, cls, label) {
   const el = document.getElementById(id);
@@ -672,6 +670,7 @@ function toast(msg) {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
+  if (e.target.closest('button, input, textarea, select, [contenteditable="true"]')) return;
   if (e.key===' ')              { e.preventDefault(); doAction('space'); }
   else if (e.key==='s')         doAction('speak');
   else if (e.key==='t')         doAction('mute');
