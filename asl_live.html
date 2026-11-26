@@ -409,7 +409,12 @@ function initMediaPipe() {
   camera.start().then(()=>{
     stepDone('ls-cam');
     setTimeout(()=>{ document.getElementById('loadOverlay').classList.add('hidden'); }, 600);
-  }).catch(e => stepError('ls-cam', e.message));
+  }).catch(() => {
+    stepError('ls-cam', 'Camera unavailable');
+    document.getElementById('loadOverlay').classList.add('hidden');
+    document.querySelector('#noHandMsg p').textContent = 'Camera unavailable. Allow camera access and reload the page.';
+    document.getElementById('noHandMsg').classList.remove('hidden');
+  });
 }
 
 // Feature extraction must match create_dataset.py exactly. No mirroring.
