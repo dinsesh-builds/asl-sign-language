@@ -76,6 +76,7 @@ The script prints test accuracy and a per class report. The 80/20 split happens 
 ## Related work
 
 - [SplitGuard](https://github.com/dinsesh-builds/splitguard), the tool that found near duplicates in this dataset. It reported 416 of 2155 test rows with a near duplicate in train.
+- [PrivacyLint](https://github.com/dinsesh-builds/privacylint), which found the old commit emails in this repo without printing them.
 - [WLASL](https://github.com/dxli94/WLASL), the WACV 2020 word level dataset and method comparison. It covers 2,000 signs from video, so its scores are not comparable to this fingerspelling model, but it is the benchmark to read next.
 - [sign-language-processing](https://github.com/kevinjosethomas/sign-language-processing), ASL fingerspelling with semantic pose retrieval.
 - [SignLanguage](https://github.com/Narottam04/SignLanguage), a platform for learning ASL with videos for over 20,000 phrases.
