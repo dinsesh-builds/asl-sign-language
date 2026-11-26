@@ -406,15 +406,20 @@ function initMediaPipe() {
     },
     width: 1280, height: 720
   });
-  camera.start().then(()=>{
-    stepDone('ls-cam');
-    setTimeout(()=>{ document.getElementById('loadOverlay').classList.add('hidden'); }, 600);
-  }).catch(() => {
+  var cameraReady = false;
+  function cameraProblem() {
+    if (cameraReady) return;
     stepError('ls-cam', 'Camera unavailable');
     document.getElementById('loadOverlay').classList.add('hidden');
     document.querySelector('#noHandMsg p').textContent = 'Camera unavailable. Allow camera access and reload the page.';
     document.getElementById('noHandMsg').classList.remove('hidden');
-  });
+  }
+  camera.start().then(()=>{
+    cameraReady = true;
+    stepDone('ls-cam');
+    setTimeout(()=>{ document.getElementById('loadOverlay').classList.add('hidden'); }, 600);
+  }).catch(cameraProblem);
+  setTimeout(cameraProblem, 6000);
 }
 
 // Feature extraction must match create_dataset.py exactly. No mirroring.
