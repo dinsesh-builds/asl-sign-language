@@ -50,7 +50,17 @@ Keys in the live window: `space` ends a word, `s` speaks the sentence, `t` toggl
 python train_classifier.py
 ```
 
-The script prints test accuracy and a per class report. The 80/20 split happens before augmentation, so near duplicates cannot inflate the test score. This README does not claim a fixed accuracy number. Run it on your own data to get yours.
+The script prints test accuracy and a per class report. The 80/20 split happens before augmentation, so synthetic copies cannot cross the split. The raw data was already contaminated: SplitGuard found 416 of 2155 test rows with a near duplicate in train. This README does not claim a fixed accuracy number. Run it on your own data to get yours.
+
+## Performance
+
+The exported model is 649,829 bytes. Nothing is uploaded, and the page has no server of its own. The browser loads MediaPipe and ONNX Runtime from a CDN, so the first visit needs network even though camera frames stay local. See [SECURITY.md](SECURITY.md).
+
+Check the size yourself:
+
+```bash
+Get-Item model.onnx | Select-Object Length
+```
 
 ## Limits
 
